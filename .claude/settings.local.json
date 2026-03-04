@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(npm install:*)",
+      "Bash(npx tsx:*)",
+      "Bash(node test-wb-excel.js:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(node test-cron.js:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

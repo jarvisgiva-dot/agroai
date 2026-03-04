@@ -1,0 +1,468 @@
+"use client"
+
+import { useEffect, useState, useMemo } from "react"
+import { supabase } from "@/lib/supabase"
+import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Leaf, TrendingUp, DollarSign, Wheat, Fuel, FlaskConical, Sprout, Flower2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { MODALIDADES, CHART_COLORS as COLORS } from "@/constants"
+import { AIInsights } from "@/components/dashboard/AIInsights"
+
+export default function DashboardPage() {
+    const [selectedSafra, setSelectedSafra] = useState<string>("todas")
+    const [selectedFazenda, setSelectedFazenda] = useState<string>("todas")
+    const [selectedCultura, setSelectedCultura] = useState<string>("soja")
+    const [productivityData, setProductivityData] = useState<any[]>([])
+    const [contractData, setContractData] = useState<any[]>([])
+    const [inventoryData, setInventoryData] = useState<any[]>([])
+    const [graosEstoqueData, setGraosEstoqueData] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+
+    // Raw filter data
+    const [rawFilterData, setRawFilterData] = useState<any[]>([])
+
+    useEffect(() => {
+        fetchAvailableFilters()
+    }, [])
+
+    useEffect(() => {
+        fetchDashboardData()
+    }, [selectedSafra, selectedFazenda, selectedCultura])
+
+    const fetchAvailableFilters = async () => {
+        try {
+            // Fetch all unique combinations of filters
+            const { data } = await supabase
+                .from('produtividade_colheita')
+                .select('cultura, safra, fazenda_lavoura')
+
+            if (data) {
+                setRawFilterData(data)
+
+                // Validate that selected cultura exists, fallback to first available if not
+                const uniqueCulturas = [...new Set(data.map((item: any) => item.cultura).filter(Boolean))].sort() as string[]
+
+                // Find "soja" in a case-insensitive way
+                const sojaMatch = uniqueCulturas.find(c => c.toLowerCase() === 'soja')
+
+                if (sojaMatch) {
+                    // If "soja" exists (in any case), select it explicitly to match the Select option value
+                    // This fixes the issue where "soja" (lowercase) doesn't match "SOJA" (uppercase) in the Select
+                    if (selectedCultura.toLowerCase() === 'soja') {
+                        setSelectedCultura(sojaMatch)
+                    }
+                } else if (selectedCultura === "soja" && uniqueCulturas.length > 0) {
+                    // If "soja" doesn't exist but is selected, fallback to first available
+                    setSelectedCultura(uniqueCulturas[0])
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching filters:', error)
+        }
+    }
+
+    // Derived Filters
+    const availableCulturas = useMemo(() => {
+        return [...new Set(rawFilterData.map((item: any) => item.cultura).filter(Boolean))].sort() as string[]
+    }, [rawFilterData])
+
+    const availableSafras = useMemo(() => {
+        let filtered = rawFilterData
+        if (selectedCultura !== "todas") {
+            filtered = filtered.filter((item: any) => item.cultura === selectedCultura)
+        }
+        return [...new Set(filtered.map((item: any) => item.safra).filter(Boolean))].sort().reverse() as string[]
+    }, [rawFilterData, selectedCultura])
+
+    const availableFazendas = useMemo(() => {
+        let filtered = rawFilterData
+        if (selectedCultura !== "todas") {
+            filtered = filtered.filter((item: any) => item.cultura === selectedCultura)
+        }
+        if (selectedSafra !== "todas") {
+            filtered = filtered.filter((item: any) => item.safra === selectedSafra)
+        }
+        return [...new Set(filtered.map((item: any) => item.fazenda_lavoura).filter(Boolean))].sort() as string[]
+    }, [rawFilterData, selectedCultura, selectedSafra])
+
+    // Auto-select Safra when Cultura changes
+    useEffect(() => {
+        if (selectedCultura !== "todas" && availableSafras.length > 0) {
+            // If current selected safra is not in the new available list, select the most recent one
+            if (!availableSafras.includes(selectedSafra) && selectedSafra !== "todas") {
+                setSelectedSafra(availableSafras[0])
+            } else if (selectedSafra === "todas") {
+                setSelectedSafra(availableSafras[0])
+            }
+        }
+    }, [selectedCultura, availableSafras])
+
+    const fetchDashboardData = async () => {
+        setLoading(true)
+        try {
+            // Execute all queries in parallel for better performance
+            const [prodData, allContracts, inventoryItems] = await Promise.all([
+                // Productivity query
+                (async () => {
+                    let prodQuery = supabase.from('produtividade_colheita').select('*')
+                    if (selectedSafra !== "todas") prodQuery = prodQuery.eq('safra', selectedSafra)
+                    if (selectedFazenda !== "todas") prodQuery = prodQuery.eq('fazenda_lavoura', selectedFazenda)
+                    if (selectedCultura !== "todas") prodQuery = prodQuery.eq('cultura', selectedCultura)
+                    const { data } = await prodQuery
+                    return data || []
+                })(),
+
+                // Contracts query
+                supabase.from('contratos_venda').select('*').then(res => res.data || []),
+
+                // Inventory query
+                supabase.from('estoque_insumos').select('*').then(res => res.data || [])
+            ])
+
+            // Process productivity data
+            setProductivityData(prodData)
+
+            // Process contracts data
+            let filteredContracts = allContracts
+            if (selectedCultura !== "todas") {
+                const culturaKey = selectedCultura.split(' ')[0].toLowerCase()
+                filteredContracts = filteredContracts.filter(c =>
+                    c.cultura?.toLowerCase().includes(culturaKey)
+                )
+            }
+            // NÃO filtrar por safra - mostrar todos os contratos da cultura
+
+            // Mapear contratos para garantir que qtd_pendente_sacas esteja correto (mesma lógica da página de contratos)
+            const mappedContracts = filteredContracts.map((c: any) => ({
+                ...c,
+                qtd_pendente_sacas: (c.situacao_embarque === 'FINALIZADO')
+                    ? 0
+                    : (c.qtd_pendente_sacas ?? c.qtd_contrato_sacas)
+            }))
+
+            setContractData(mappedContracts)
+
+            // Process inventory data
+            setInventoryData(inventoryItems)
+
+            // Buscar estoque de grãos para o KPI de contratos (EXATAMENTE como na página de contratos - linhas 169-188)
+            let filteredGraosEstoque = inventoryItems.filter(s => {
+                const graosKeywords = ['soja', 'milho', 'feijão', 'feijao', 'grão', 'grao']
+                const isSemente = s.categoria_linha?.toLowerCase().includes('semente') || s.nome_produto?.toLowerCase().includes('semente')
+
+                // Check if it's a grain
+                const isGrao = graosKeywords.some(k =>
+                    s.categoria_linha?.toLowerCase().includes(k) ||
+                    s.nome_produto?.toLowerCase().includes(k)
+                )
+
+                if (!isGrao || isSemente) return false
+
+                // Filter by specific culture
+                if (selectedCultura !== "todas") {
+                    const culturaKey = selectedCultura.split(' ')[0].toLowerCase()
+                    return s.nome_produto?.toLowerCase().includes(culturaKey) ||
+                        s.categoria_linha?.toLowerCase().includes(culturaKey)
+                }
+                return true
+            })
+            setGraosEstoqueData(filteredGraosEstoque)
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const filterByModalidade = (modalidade: keyof typeof MODALIDADES) => {
+        if (modalidade === 'sementes') {
+            return inventoryData.filter(item =>
+                item.categoria_linha?.toLowerCase().includes('semente') ||
+                item.nome_produto?.toLowerCase().includes('semente')
+            )
+        } else if (modalidade === 'graos_colhidos') {
+            const graosKeywords = ['soja', 'milho', 'feijão', 'feijao', 'grão', 'grao', 'grãos', 'graos']
+            return inventoryData.filter(item => {
+                const isSemente = item.categoria_linha?.toLowerCase().includes('semente') ||
+                    item.nome_produto?.toLowerCase().includes('semente')
+                const isGrao = graosKeywords.some(keyword =>
+                    item.categoria_linha?.toLowerCase().includes(keyword) ||
+                    item.nome_produto?.toLowerCase().includes(keyword)
+                )
+                return isGrao && !isSemente
+            })
+        } else {
+            const keywords = MODALIDADES[modalidade]
+            return inventoryData.filter(item =>
+                keywords.some(keyword =>
+                    item.categoria_linha?.toLowerCase().includes(keyword.toLowerCase()) ||
+                    item.nome_produto?.toLowerCase().includes(keyword.toLowerCase())
+                )
+            )
+        }
+    }
+
+    const totalProduction = Math.round(productivityData.reduce((sum, item) => sum + (item.producao_liquida_sacas || 0), 0))
+    const totalArea = parseFloat(productivityData.reduce((sum, item) => sum + (item.area_colhida_ha || 0), 0).toFixed(2))
+    const avgProductivity = totalArea > 0 ? (totalProduction / totalArea).toFixed(2) : '0'
+
+    // KPIs de Contratos (EXATAMENTE como na página de contratos - linha 190-197)
+    const totalEstoque = Math.round(graosEstoqueData.reduce((sum, g) => sum + (g.quantidade_estoque || 0), 0))
+    const totalVendido = Math.round(contractData.reduce((sum, c) => sum + (c.qtd_contrato_sacas || 0), 0))
+    const totalPendente = Math.round(contractData.reduce((sum, c) => sum + (c.qtd_pendente_sacas || 0), 0))
+    const totalEmbarcado = totalVendido - totalPendente
+    const disponivelVenda = totalEstoque - totalPendente
+
+    const sementesStock = filterByModalidade('sementes')
+    const graosColhidosStock = filterByModalidade('graos_colhidos')
+    const combustiveisStock = filterByModalidade('combustiveis')
+    const quimicosStock = filterByModalidade('quimicos')
+    const fertilizantesStock = filterByModalidade('fertilizantes')
+
+    const valorSementes = sementesStock.reduce((sum, i) => sum + (i.valor_total_estoque || 0), 0)
+    const kgSementes = sementesStock.reduce((sum, i) => sum + (i.quantidade_estoque || 0), 0)
+    const sacasGraosColhidos = graosColhidosStock.reduce((sum, i) => sum + (i.quantidade_estoque || 0), 0)
+    const valorGraosColhidos = graosColhidosStock.reduce((sum, i) => sum + (i.valor_total_estoque || 0), 0)
+    const litrosCombustiveis = combustiveisStock.reduce((sum, i) => sum + (i.quantidade_estoque || 0), 0)
+    const valorCombustiveis = combustiveisStock.reduce((sum, i) => sum + (i.valor_total_estoque || 0), 0)
+    const valorQuimicos = quimicosStock.reduce((sum, i) => sum + (i.valor_total_estoque || 0), 0)
+    const valorFertilizantes = fertilizantesStock.reduce((sum, i) => sum + (i.valor_total_estoque || 0), 0)
+
+    if (loading) return <div className="p-8">Carregando dashboard...</div>
+
+    return (
+        <div className="p-8 space-y-8 bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/30 min-h-screen">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-4xl font-bold text-gray-800">Dashboard Analítico</h1>
+                    <p className="text-gray-500 mt-2">
+                        {selectedCultura !== "todas"
+                            ? `Análise de ${selectedCultura.toUpperCase()}`
+                            : "Selecione uma cultura para análise"}
+                        {selectedSafra !== "todas" && ` - Safra ${selectedSafra}`}
+                        {selectedCultura !== "todas" && (
+                            <span className="text-xs ml-2 text-gray-400">(áreas em rotação não são somadas)</span>
+                        )}
+                    </p>
+                </div>
+
+                <div className="flex gap-4">
+                    <Select value={selectedCultura} onValueChange={setSelectedCultura}>
+                        <SelectTrigger className="w-[200px] bg-white border-gray-200 rounded-2xl shadow-sm">
+                            <SelectValue placeholder="Cultura" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-2xl">
+                            <SelectItem value="todas">Selecione uma cultura</SelectItem>
+                            {availableCulturas.map((cultura: string) => (
+                                <SelectItem key={cultura} value={cultura} className="uppercase">
+                                    {cultura}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Select value={selectedSafra} onValueChange={setSelectedSafra}>
+                        <SelectTrigger className="w-[180px] bg-white border-gray-200 rounded-2xl shadow-sm">
+                            <SelectValue placeholder="Safra" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-2xl">
+                            <SelectItem value="todas">Todas as safras</SelectItem>
+                            {availableSafras.map((safra: string) => (
+                                <SelectItem key={safra} value={safra}>
+                                    {safra}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Select value={selectedFazenda} onValueChange={setSelectedFazenda}>
+                        <SelectTrigger className="w-[200px] bg-white border-gray-200 rounded-2xl shadow-sm">
+                            <SelectValue placeholder="Fazenda" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-2xl">
+                            <SelectItem value="todas">Todas as fazendas</SelectItem>
+                            {availableFazendas.map((f: string) => (
+                                <SelectItem key={f} value={f}>{f}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            <div className="mb-8">
+                <AIInsights
+                    context={{ cultura: selectedCultura, safra: selectedSafra, fazenda: selectedFazenda }}
+                    data={{
+                        summary: "Visão Geral do Dashboard",
+                        production: {
+                            total: totalProduction,
+                            area: totalArea,
+                            productivity: avgProductivity
+                        },
+                        contracts: {
+                            sold: totalVendido,
+                            pending_delivery: totalPendente,
+                            available_to_sell: disponivelVenda
+                        },
+                        inventory: {
+                            seeds_value: valorSementes,
+                            chemicals_value: valorQuimicos,
+                            fertilizers_value: valorFertilizantes
+                        }
+                    }}
+                />
+            </div>
+
+            <div className="grid grid-cols-4 gap-6">
+                <Card className="bg-gradient-to-br from-purple-100/60 to-purple-50/40 border-none shadow-lg hover:shadow-xl transition-all rounded-3xl">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium text-purple-700">Produção Total</CardTitle>
+                        <div className="p-3 bg-purple-200/50 rounded-2xl">
+                            <Leaf className="h-5 w-5 text-purple-600" />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-4xl font-bold text-purple-900">{totalProduction.toLocaleString()}</div>
+                        <p className="text-sm text-purple-600 mt-2">sacas</p>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-emerald-100/60 to-emerald-50/40 border-none shadow-lg hover:shadow-xl transition-all rounded-3xl">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium text-emerald-700">Área Total</CardTitle>
+                        <div className="p-3 bg-emerald-200/50 rounded-2xl">
+                            <TrendingUp className="h-5 w-5 text-emerald-600" />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-4xl font-bold text-emerald-900">{totalArea.toLocaleString()}</div>
+                        <p className="text-sm text-emerald-600 mt-2">hectares</p>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-blue-100/60 to-blue-50/40 border-none shadow-lg hover:shadow-xl transition-all rounded-3xl">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium text-blue-700">Produtividade Média</CardTitle>
+                        <div className="p-3 bg-blue-200/50 rounded-2xl">
+                            <TrendingUp className="h-5 w-5 text-blue-600" />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-4xl font-bold text-blue-900">{avgProductivity}</div>
+                        <p className="text-sm text-blue-600 mt-2">sc/ha</p>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-amber-100/60 to-amber-50/40 border-none shadow-lg hover:shadow-xl transition-all rounded-3xl">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium text-amber-700">Contratos</CardTitle>
+                        <div className="p-3 bg-amber-200/50 rounded-2xl">
+                            <DollarSign className="h-5 w-5 text-amber-600" />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-1">
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs text-gray-600">Total Estoque:</span>
+                                <span className="text-sm font-semibold text-gray-800">{totalEstoque.toLocaleString()} sc</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs text-blue-600">Total Vendido:</span>
+                                <span className="text-sm font-semibold text-blue-700">{totalVendido.toLocaleString()} sc</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs text-green-600">Total Embarcado:</span>
+                                <span className="text-sm font-semibold text-green-700">{totalEmbarcado.toLocaleString()} sc</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs text-orange-600">A Embarcar:</span>
+                                <span className="text-sm font-semibold text-orange-700">{totalPendente.toLocaleString()} sc</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-1 border-t border-amber-200">
+                                <span className="text-xs text-purple-600">Disponível:</span>
+                                <span className="text-sm font-bold text-purple-700">{disponivelVenda.toLocaleString()} sc</span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Card className="bg-white/90 backdrop-blur border-gray-100 shadow-lg rounded-3xl">
+                <CardHeader>
+                    <CardTitle className="text-gray-700">Estoque por Modalidade</CardTitle>
+                    <p className="text-xs text-gray-500 mt-1">Clique em uma modalidade para ver o estoque</p>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-5 gap-4">
+                        <Link href="/estoque?tab=sementes" className="block">
+                            <div className="text-center p-4 bg-lime-50 rounded-2xl hover:bg-lime-100 transition-all cursor-pointer hover:shadow-lg">
+                                <Flower2 className="h-8 w-8 text-lime-600 mx-auto mb-2" />
+                                <p className="text-sm text-lime-700 font-medium mb-1">Sementes</p>
+                                <p className="text-2xl font-bold text-lime-900">
+                                    {Math.round(kgSementes).toLocaleString('pt-BR')} kg
+                                </p>
+                                <p className="text-xs text-lime-700 mt-1">
+                                    {valorSementes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                                </p>
+                                <p className="text-xs text-lime-500 mt-1">{sementesStock.length} itens</p>
+                            </div>
+                        </Link>
+
+                        <Link href="/estoque?tab=graos" className="block">
+                            <div className="text-center p-4 bg-amber-50 rounded-2xl hover:bg-amber-100 transition-all cursor-pointer hover:shadow-lg">
+                                <Wheat className="h-8 w-8 text-amber-600 mx-auto mb-2" />
+                                <p className="text-sm text-amber-700 font-medium mb-1">Grãos Colhidos</p>
+                                <p className="text-2xl font-bold text-amber-900">
+                                    {Math.round(sacasGraosColhidos).toLocaleString('pt-BR')} sc
+                                </p>
+                                <p className="text-xs text-amber-700 mt-1">
+                                    {valorGraosColhidos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                                </p>
+                                <p className="text-xs text-amber-500 mt-1">{graosColhidosStock.length} itens</p>
+                            </div>
+                        </Link>
+
+                        <Link href="/estoque?tab=combustiveis" className="block">
+                            <div className="text-center p-4 bg-orange-50 rounded-2xl hover:bg-orange-100 transition-all cursor-pointer hover:shadow-lg">
+                                <Fuel className="h-8 w-8 text-orange-600 mx-auto mb-2" />
+                                <p className="text-sm text-orange-700 font-medium mb-1">Combustíveis</p>
+                                <p className="text-2xl font-bold text-orange-900">
+                                    {Math.round(litrosCombustiveis).toLocaleString('pt-BR')} L
+                                </p>
+                                <p className="text-xs text-orange-700 mt-1">
+                                    {valorCombustiveis.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                                </p>
+                                <p className="text-xs text-orange-500 mt-1">{combustiveisStock.length} itens</p>
+                            </div>
+                        </Link>
+
+                        <Link href="/estoque?tab=quimicos" className="block">
+                            <div className="text-center p-4 bg-blue-50 rounded-2xl hover:bg-blue-100 transition-all cursor-pointer hover:shadow-lg">
+                                <FlaskConical className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+                                <p className="text-sm text-blue-700 font-medium mb-1">Químicos</p>
+                                <p className="text-2xl font-bold text-blue-900">
+                                    {valorQuimicos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                                </p>
+                                <p className="text-xs text-blue-600 mt-1">{quimicosStock.length} itens</p>
+                            </div>
+                        </Link>
+
+                        <Link href="/estoque?tab=fertilizantes" className="block">
+                            <div className="text-center p-4 bg-green-50 rounded-2xl hover:bg-green-100 transition-all cursor-pointer hover:shadow-lg">
+                                <Sprout className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                                <p className="text-sm text-green-700 font-medium mb-1">Fertilizantes</p>
+                                <p className="text-2xl font-bold text-green-900">
+                                    {valorFertilizantes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                                </p>
+                                <p className="text-xs text-green-600 mt-1">{fertilizantesStock.length} itens</p>
+                            </div>
+                        </Link>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    )
+}

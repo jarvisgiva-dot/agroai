@@ -1,0 +1,274 @@
+{
+  "name": "AgroMind - PDF Ingestion & Extraction",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "AgroMind_Inputs"
+        },
+        "events": [
+          "file.created"
+        ]
+      },
+      "id": "1",
+      "name": "Google Drive Trigger",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": "={{ $json.id }}"
+      },
+      "id": "2",
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "prompt": "Analise o conteúdo deste PDF. Identifique se é um relatório de 'CONTRATOS', 'ESTOQUE' ou 'PRODUTIVIDADE'.\n\nExtraia os dados para JSON seguindo esta estrutura:\n\nSe CONTRATOS:\n{ \"type\": \"contract\", \"data\": [ { \"contract_number\": \"...\", \"buyer\": \"...\", \"type\": \"FOB/CIF\", \"crop_year\": \"...\", \"quantity_scs\": 0, \"price_sc\": 0, \"due_date\": \"YYYY-MM-DD\", \"entity\": \"...\" } ] }\n\nSe ESTOQUE:\n{ \"type\": \"inventory\", \"data\": [ { \"product_code\": \"...\", \"name\": \"...\", \"category\": \"...\", \"quantity\": 0, \"unit\": \"...\", \"unit_cost\": 0, \"storage_location\": \"...\" } ] }\n\nSe PRODUTIVIDADE:\n{ \"type\": \"productivity\", \"data\": [ { \"field_id\": \"...\", \"variety\": \"...\", \"area_ha\": 0, \"harvested_scs\": 0, \"harvest_date_start\": \"YYYY-MM-DD\", \"farm_sector\": \"...\" } ] }",
+        "modelId": "gemini-1.5-pro-001",
+        "binaryData": true,
+        "binaryPropertyName": "data"
+      },
+      "id": "3",
+      "name": "Gemini AI Extraction",
+      "type": "n8n-nodes-base.googleVertexAi",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "googleVertexAiOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Vertex AI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = JSON.parse($input.first().json.text);\nreturn { json: result };"
+      },
+      "id": "4",
+      "name": "Parse JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.type }}",
+              "operation": "equal",
+              "value2": "contract"
+            }
+          ]
+        }
+      },
+      "id": "5",
+      "name": "If Contract",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.type }}",
+              "operation": "equal",
+              "value2": "inventory"
+            }
+          ]
+        }
+      },
+      "id": "6",
+      "name": "If Inventory",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "tb_contracts",
+        "columns": "contract_number, buyer, type, crop_year, quantity_scs, price_sc, due_date, entity",
+        "operation": "upsert",
+        "keyColumns": "contract_number"
+      },
+      "id": "7",
+      "name": "Supabase Contracts",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        180
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_ID",
+          "name": "Supabase Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "tb_inventory",
+        "columns": "product_code, name, category, quantity, unit, unit_cost, storage_location",
+        "operation": "upsert",
+        "keyColumns": "product_code, storage_location"
+      },
+      "id": "8",
+      "name": "Supabase Inventory",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        380
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_ID",
+          "name": "Supabase Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "tb_productivity",
+        "columns": "field_id, variety, area_ha, harvested_scs, harvest_date_start, farm_sector",
+        "operation": "upsert",
+        "keyColumns": "field_id, crop_year"
+      },
+      "id": "9",
+      "name": "Supabase Productivity",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        580
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_ID",
+          "name": "Supabase Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI Extraction": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON": {
+      "main": [
+        [
+          {
+            "node": "If Contract",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Contract": {
+      "main": [
+        [
+          {
+            "node": "Supabase Contracts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase Productivity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Inventory": {
+      "main": [
+        [
+          {
+            "node": "Supabase Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
