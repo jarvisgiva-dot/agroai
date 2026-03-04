@@ -1,10 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { addMonths, differenceInMonths, parseISO, format } from 'date-fns';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { supabaseService as supabase } from '@/lib/supabase-service';
 
 export async function POST() {
     try {

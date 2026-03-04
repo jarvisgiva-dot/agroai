@@ -22,12 +22,8 @@ export async function POST(req: NextRequest) {
 
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-        // Fetch contracts with payment dates (data_recebimento)
-        // Initialize Supabase exactly like the working check-sync route
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!
-        );
+        // Initialize Supabase safely
+        const { supabaseService: supabase } = require('@/lib/supabase-service');
 
         console.log('Fetching contracts from database...');
         const { data: allContracts, error } = await supabase
@@ -44,7 +40,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Filter in memory to be case-insensitive and robust
-        const contracts = allContracts?.filter(c => {
+        const contracts = allContracts?.filter((c: any) => {
             const cultura = c.cultura?.toUpperCase() || '';
             return cultura.includes('SOJA') || cultura.includes('MILHO');
         }) || [];

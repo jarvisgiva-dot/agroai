@@ -9,25 +9,14 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseService as supabase } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
 
-function getServiceSupabase() {
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.startsWith('eyJ')
-        ? process.env.SUPABASE_SERVICE_ROLE_KEY
-        : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-    return createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        serviceKey
-    );
-}
+// GET: Verifica se já existe token salvo e se ele é válido
 
 /** GET: Verifica se já existe token salvo e se ele é válido */
 export async function GET() {
-    const supabase = getServiceSupabase();
-
     // Verifica token no banco
     const { data: dbToken } = await supabase
         .from("app_settings")
@@ -99,7 +88,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "refreshToken é obrigatório" }, { status: 400 });
     }
 
-    const supabase = getServiceSupabase();
     const { error } = await supabase.from("app_settings").upsert({
         key: "google_drive_refresh_token",
         value: refreshToken,
@@ -113,7 +101,6 @@ export async function POST(req: NextRequest) {
 
 /** DELETE: Remove o token de conexão */
 export async function DELETE() {
-    const supabase = getServiceSupabase();
     await supabase.from("app_settings").delete().eq("key", "google_drive_refresh_token");
     return NextResponse.json({ success: true, message: "Conexão Drive removida" });
 }

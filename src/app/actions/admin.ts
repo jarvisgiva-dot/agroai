@@ -1,17 +1,7 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
-
-// Initialize Supabase client with Service Role Key for admin operations
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('Missing Supabase environment variables for admin actions')
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+import { supabaseService as supabase } from '@/lib/supabase-service'
 
 export async function deleteRecords(table: string, ids: number[]) {
     try {

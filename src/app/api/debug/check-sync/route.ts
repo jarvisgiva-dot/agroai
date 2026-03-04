@@ -1,14 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseService as supabase } from '@/lib/supabase-service';
 
 export async function GET() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     // Get ALL contracts to debug connection
     console.log("Debug Route: Fetching contracts...");
-    console.log("Supabase URL:", supabaseUrl ? "Defined" : "Missing");
 
     const { data: contracts, error } = await supabase
         .from('contratos_venda')

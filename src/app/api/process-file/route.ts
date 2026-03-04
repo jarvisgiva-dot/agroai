@@ -321,12 +321,9 @@ export async function POST(req: NextRequest) {
         // Criar cliente autenticado para respeitar RLS
         const authHeader = req.headers.get('Authorization');
         // Na verdade, precisamos criar um novo client com o header
-        const { createClient } = require('@supabase/supabase-js');
-        const authenticatedSupabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            { global: { headers: { Authorization: authHeader || '' } } }
-        );
+        // Usar o serviço seguro centralizado
+        const { getServiceSupabase } = require('@/lib/supabase-service');
+        const authenticatedSupabase = getServiceSupabase();
 
         // Obter usuário para injetar user_id
         const { data: { user }, error: userError } = await authenticatedSupabase.auth.getUser();

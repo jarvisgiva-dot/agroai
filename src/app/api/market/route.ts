@@ -1,18 +1,13 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { supabaseService as supabase } from '@/lib/supabase-service';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
     try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-        if (!supabaseUrl || !supabaseServiceKey) {
-            return NextResponse.json({ error: 'Missing Supabase credentials' }, { status: 500 });
-        }
-
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        // The supabase client is now imported directly from '@/lib/supabase-service'
+        // and is named 'supabase' due to the 'as supabase' alias.
+        // The credential checks and client creation are handled within the utility.
 
         // Fetch prices and exchange rates in parallel
         const [pricesRes, ratesRes] = await Promise.all([

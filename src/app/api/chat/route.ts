@@ -23,30 +23,9 @@ export async function POST(req: NextRequest) {
 
     try {
         // --- 1. SETUP & VALIDATION ---
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
         const apiKey = process.env.GOOGLE_API_KEY;
-
-        if (!supabaseUrl || !supabaseServiceKey || !apiKey) {
-            const missing = [];
-            if (!supabaseUrl) missing.push('NEXT_PUBLIC_SUPABASE_URL');
-            if (!supabaseServiceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
-            if (!apiKey) missing.push('GOOGLE_API_KEY');
-
-            console.error("Missing Environment Variables:", missing.join(', '));
-            return NextResponse.json({
-                error: "Server configuration error",
-                details: `Missing env vars: ${missing.join(', ')}`
-            }, { status: 500 });
-        }
-
-        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-            auth: {
-                persistSession: false,
-                autoRefreshToken: false,
-            }
-        });
-        const genAI = new GoogleGenerativeAI(apiKey);
+        const { supabaseService: supabase } = require('@/lib/supabase-service');
+        const genAI = new GoogleGenerativeAI(apiKey || 'placeholder');
 
         // --- 2. PARSE REQUEST ---
         let body;
