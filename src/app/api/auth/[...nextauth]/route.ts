@@ -35,9 +35,7 @@ export const authOptions = {
                     // console.log("SALVANDO NOVO REFRESH TOKEN NO BANCO", account.refresh_token.substring(0, 10))
                     const { createClient } = await import('@supabase/supabase-js');
                     // Use a Anon Key publicamente caso a Role Key ainda esteja com o template do .env.local
-                    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.startsWith('eyJ')
-                        ? process.env.SUPABASE_SERVICE_ROLE_KEY
-                        : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+                    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
                     const adminSupabase = createClient(
                         process.env.NEXT_PUBLIC_SUPABASE_URL!,
